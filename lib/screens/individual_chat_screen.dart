@@ -1,79 +1,110 @@
 ```dart
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart'; // For date formatting
+
 import '../models/chat_message_model.dart';
-import '../models/user_model.dart'; // For current user context (conceptual)
+import '../models/user_model.dart'; // For chat partner details if passed as UserModel
 import '../services/chat_service.dart';
-import '../services/ai/on_device_ai_service.dart'; // Import AI service
+import '../services/ai/on_device_ai_service.dart';
+// import '../services/chat_settings_service.dart'; // Conceptual for saving AI settings
 import '../widgets/message_bubble.dart';
-// import '../widgets/copilot_suggestion_bar.dart'; // Assuming this is created as a separate widget
+// import '../widgets/chat_input_bar.dart'; // To be defined in 1.6
+// import './chat_thread_settings_screen.dart'; // For chat-specific settings
 
-// --- Conceptual CopilotSuggestionBar Widget (can be in a separate file) ---
-class CopilotSuggestionBar extends StatelessWidget {
-  final String suggestionText;
-  final VoidCallback onTap;
-  final VoidCallback onDismiss;
+// --- Conceptual ChatSettingsService (from Subtask "Define the conceptual UI controls for enabling/disabling Autopilot") ---
+// Can be moved to its own file: lib/services/chat_settings_service.dart
+class ChatSettingsService {
+  Future<Map<String, bool>> getAiSettings(String threadId, String userId) async {
+    print('ChatSettingsService: Fetching AI settings for thread $threadId, user $userId');
+    await Future.delayed(Duration(milliseconds: 150));
+    // Simulate fetching. In a real app, this comes from a persistent store / backend.
+    // Return default values if not found for this conceptual task.
+    return {'copilotEnabled': true, 'autopilotEnabled': false};
+  }
 
-  const CopilotSuggestionBar({
+  Future<bool> updateAiSettings(String threadId, String userId, {bool? copilotEnabled, bool? autopilotEnabled}) async {
+    print('ChatSettingsService: Updating AI settings for thread $threadId, user $userId: Copilot=$copilotEnabled, Autopilot=$autopilotEnabled');
+    await Future.delayed(Duration(milliseconds: 300));
+    // Conceptual: Make API call to backend: PUT /api/chat/threads/:threadId/ai-settings
+    // Body: { userId: "...", settings: { "copilotEnabled": copilotEnabled, "autopilotEnabled": autopilotEnabled ... } }
+    return true; // Simulate success
+  }
+}
+// --- End Conceptual ChatSettingsService ---
+
+
+// --- Conceptual ChatInputBar Widget (placeholder for Subtask 1.6) ---
+// This would be in lib/widgets/chat_input_bar.dart
+class ChatInputBar extends StatelessWidget {
+  final TextEditingController controller;
+  final VoidCallback onSendPressed;
+  final VoidCallback onAttachPressed; // Conceptual
+
+  const ChatInputBar({
     Key? key,
-    required this.suggestionText,
-    required this.onTap,
-    required this.onDismiss,
+    required this.controller,
+    required this.onSendPressed,
+    required this.onAttachPressed,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
-      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.8),
-        borderRadius: BorderRadius.circular(20.0),
-      ),
+      padding: EdgeInsets.only(left: 8.0, right: 8.0, bottom: MediaQuery.of(context).padding.bottom + 8.0, top: 8.0),
+      color: Theme.of(context).cardColor, // Or specific background color
       child: Row(
-        children: [
-          Icon(Icons.auto_awesome_outlined, size: 20.0, color: Theme.of(context).colorScheme.onSecondaryContainer),
-          SizedBox(width: 10.0),
+        children: <Widget>[
+          IconButton(
+            icon: Icon(Icons.add_photo_alternate_outlined),
+            onPressed: onAttachPressed,
+            tooltip: "Attach media",
+          ),
           Expanded(
-            child: GestureDetector( // Use GestureDetector for tap on text area
-              onTap: onTap,
-              child: Text(
-                suggestionText,
-                style: TextStyle(
-                  fontStyle: FontStyle.italic,
-                  color: Theme.of(context).colorScheme.onSecondaryContainer,
+            child: TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                hintText: 'Type a message...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(25.0),
+                  borderSide: BorderSide.none,
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+                filled: true,
+                fillColor: Theme.of(context).scaffoldBackgroundColor, // Contrasting color
+                contentPadding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
               ),
+              minLines: 1,
+              maxLines: 5,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => onSendPressed(),
             ),
           ),
           SizedBox(width: 8.0),
           IconButton(
-            icon: Icon(Icons.close, size: 20.0),
-            color: Theme.of(context).colorScheme.onSecondaryContainer.withOpacity(0.7),
-            onPressed: onDismiss,
-            padding: EdgeInsets.zero,
-            constraints: BoxConstraints(),
-            tooltip: "Dismiss suggestion",
+            icon: Icon(Icons.send_rounded),
+            color: Theme.of(context).colorScheme.primary,
+            onPressed: onSendPressed,
+            tooltip: "Send message",
           ),
         ],
       ),
     );
   }
 }
-// --- End Conceptual CopilotSuggestionBar Widget ---
+// --- End Conceptual ChatInputBar Widget ---
 
 
-class IndividualChatScreen extends StatefulWidget {
+class IndividualChatScreen extends StatefulWidget { // Renamed from IndividualChatPage for consistency
   final String chatId;
   final String chatParticipantName;
-  // final UserModel chatParticipant; // Alternative
+  final String? chatParticipantAvatarUrl; // Optional
+  final Color? chatParticipantAvatarColor; // Optional, for initial letter avatar
 
-  IndividualChatScreen({
+  const IndividualChatScreen({
     Key? key,
     required this.chatId,
     required this.chatParticipantName,
-    // required this.chatParticipant,
+    this.chatParticipantAvatarUrl,
+    this.chatParticipantAvatarColor,
   }) : super(key: key);
 
   @override
@@ -83,101 +114,81 @@ class IndividualChatScreen extends StatefulWidget {
 class _IndividualChatScreenState extends State<IndividualChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ChatService _chatService = ChatService();
-  final OnDeviceAiService _aiService = OnDeviceAiService(); // AI Service instance
+  final OnDeviceAiService _aiService = OnDeviceAiService();
+  final ChatSettingsService _chatSettingsService = ChatSettingsService(); // Conceptual
+
   List<ChatMessageModel> _messages = [];
   bool _isLoadingMessages = true;
+  bool _isSendingMessage = false; // To disable send button during send
+
+  // AI Feature States
+  bool _copilotEnabled = true; // Default, will be loaded
+  bool _autopilotEnabled = false; // Default, will be loaded
+  List<String> _copilotSuggestions = [];
+  bool _isGeneratingCopilotSuggestions = false;
+
+  // Conceptual: Current user ID, would come from an AuthService
   final String _currentUserId = 'currentUser123';
-
-  Stream<ChatMessageModel>? _messageStream;
-
-  // Copilot State
-  String? _currentCopilotSuggestion;
-  bool _copilotEnabledForThisChat = true; // Conceptual: Assume true for now
-  // Map<String, String> _participantDisplayNames = {}; // For group chat sender names - conceptual
 
   @override
   void initState() {
     super.initState();
-    _loadMessages();
-    _listenToMessages(); // Listens to messages from ChatService (backend)
+    _loadInitialData();
     _messageController.addListener(_onInputChanged);
   }
 
-  void _onInputChanged() {
-    // If user starts typing, dismiss Copilot suggestion
-    if (_messageController.text.isNotEmpty && _currentCopilotSuggestion != null) {
-      setState(() {
-        _currentCopilotSuggestion = null;
-      });
-    }
-  }
-
-  Future<void> _checkForCopilotSuggestion(ChatMessageModel incomingMessage) async {
-    if (_copilotEnabledForThisChat && incomingMessage.senderId != _currentUserId) {
-      // String senderName = _participantDisplayNames[incomingMessage.senderId] ?? widget.chatParticipantName; // More robust name fetching needed
-      String senderName = widget.chatParticipantName; // Simplified for 1-on-1
-
-      final suggestion = await _aiService.getCopilotSuggestion(incomingMessage.text, senderName);
-      if (mounted && suggestion != null) { // Check if widget is still in tree
-        setState(() {
-          _currentCopilotSuggestion = suggestion;
-        });
-      }
-    }
-  }
-
-  void _loadMessages() async {
-    // ... (existing message loading logic from previous subtask) ...
-    // For testing Copilot, let's add a dummy received message
-    // if (_messages.isEmpty && widget.chatId == "friend_user_id_1") { // Simulate specific chat
-    //   ChatMessageModel initialFriendMessage = ChatMessageModel(messageId: 'initmsg', senderId: widget.chatId, threadId: widget.chatId, text: 'Hey, got a question for you.', timestamp: DateTime.now().subtract(Duration(seconds:10)), type: MessageType.text);
-    //   _messages.insert(0, initialFriendMessage);
-    //   _checkForCopilotSuggestion(initialFriendMessage);
-    // }
-    // ...
+  Future<void> _loadInitialData() async {
     setState(() { _isLoadingMessages = true; });
     try {
+      // Fetch initial messages
       final messages = await _chatService.getMessages(widget.chatId);
-      if(mounted){
+      // Fetch AI settings for this chat
+      final aiSettings = await _chatSettingsService.getAiSettings(widget.chatId, _currentUserId);
+
+      if (mounted) {
         setState(() {
           _messages = messages.reversed.toList();
+          _copilotEnabled = aiSettings['copilotEnabled'] ?? true;
+          _autopilotEnabled = aiSettings['autopilotEnabled'] ?? false;
           _isLoadingMessages = false;
-          // If there's an initial message from the other user, check for suggestion
-          if (_messages.isNotEmpty && _messages.first.senderId != _currentUserId) {
-            _checkForCopilotSuggestion(_messages.first);
-          }
         });
+        // If there's an initial message from the other user, check for suggestion
+        if (_messages.isNotEmpty && _messages.first.senderId != _currentUserId) {
+          _triggerCopilotSuggestion(_messages.first);
+        }
       }
-    } catch (e) { /* ... error handling ... */ }
+    } catch (e) {
+      if (mounted) setState(() { _isLoadingMessages = false; });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load chat: $e')));
+    }
+    // TODO: Setup stream listener for new messages from _chatService.getMessageStream()
+    // This was in previous conceptual code and should be re-added here.
+    // _chatService.getMessageStream(widget.chatId).listen((newMessage) {
+    //   if (mounted) {
+    //     setState(() { _messages.insert(0, newMessage); });
+    //     _triggerCopilotSuggestion(newMessage);
+    //   }
+    // });
   }
 
-  void _listenToMessages() {
-    _messageStream = _chatService.getMessageStream(widget.chatId);
-    _messageStream?.listen((newMessage) {
-      if(mounted){
-        setState(() {
-          _messages.insert(0, newMessage);
-        });
-        // Check for Copilot suggestion when a new message arrives
-        _checkForCopilotSuggestion(newMessage);
-      }
-    }, onError: (error) { /* ... error handling ... */ });
+  void _onInputChanged() {
+    if (_messageController.text.isNotEmpty && _copilotSuggestions.isNotEmpty) {
+      setState(() { _copilotSuggestions = []; }); // Clear suggestions when user types
+    }
   }
 
   Future<void> _sendMessage() async {
-    if (_messageController.text.trim().isEmpty) {
-      return;
-    }
     final text = _messageController.text.trim();
+    if (text.isEmpty) return;
 
-    // Clear suggestion when user sends a message
-    if (_currentCopilotSuggestion != null) {
-      setState(() { _currentCopilotSuggestion = null; });
-    }
+    setState(() {
+      _isSendingMessage = true;
+      _copilotSuggestions = []; // Clear suggestions on send
+    });
     _messageController.clear();
 
-    final newMessage = ChatMessageModel( /* ... create message ... */
-      messageId: DateTime.now().millisecondsSinceEpoch.toString(),
+    final newMessage = ChatMessageModel(
+      messageId: DateTime.now().millisecondsSinceEpoch.toString(), // Temp client ID
       senderId: _currentUserId,
       threadId: widget.chatId,
       text: text,
@@ -185,107 +196,252 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> {
       type: MessageType.text,
     );
 
-    // Optimistic UI update (or rely on stream echo)
+    // Optimistic UI update (or rely on stream echo from ChatService)
     // setState(() { _messages.insert(0, newMessage); });
 
     try {
       await _chatService.sendMessage(widget.chatId, newMessage);
-    } catch (e) { /* ... error handling, potentially remove optimistic message ... */ }
-  }
-
-  void _useCopilotSuggestion() {
-    if (_currentCopilotSuggestion != null) {
-      _messageController.text = _currentCopilotSuggestion!;
-      _messageController.selection = TextSelection.fromPosition(TextPosition(offset: _messageController.text.length)); // Move cursor to end
-      setState(() {
-        _currentCopilotSuggestion = null; // Clear suggestion after use
-      });
+      // If not using stream echo for own messages, add it here after successful send
+    } catch (e) {
+      // Handle send error, e.g., show error, add message back to input, mark as unsent
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send message.')));
+      // setState(() { _messages.remove(newMessage); }); // If optimistic update was done
+    } finally {
+      if (mounted) setState(() { _isSendingMessage = false; });
     }
   }
 
-  void _dismissCopilotSuggestion() {
-    setState(() {
-      _currentCopilotSuggestion = null;
-    });
+  Future<void> _triggerCopilotSuggestion(ChatMessageModel incomingMessage) async {
+    if (_copilotEnabled && incomingMessage.senderId != _currentUserId) {
+      if (mounted) setState(() { _isGeneratingCopilotSuggestions = true; });
+      try {
+        final suggestion = await _aiService.getCopilotSuggestion(
+          incomingMessage.text,
+          widget.chatParticipantName // Pass participant's name
+        );
+        if (mounted && suggestion != null) {
+          setState(() {
+            _copilotSuggestions = [suggestion]; // For now, handle one suggestion. Could be List<String>
+          });
+        }
+      } catch (e) {
+        print("Error getting Copilot suggestion: $e");
+      } finally {
+        if (mounted) setState(() { _isGeneratingCopilotSuggestions = false; });
+      }
+    }
   }
 
+  void _useCopilotSuggestion(String suggestion) {
+    _messageController.text = suggestion;
+    _messageController.selection = TextSelection.fromPosition(TextPosition(offset: _messageController.text.length));
+    setState(() { _copilotSuggestions = []; });
+  }
+
+  void _showChatSettings() {
+    // Placeholder: In a real app, navigate to a proper ChatThreadSettingsScreen
+    // Navigator.push(context, MaterialPageRoute(builder: (_) => ChatThreadSettingsScreen(threadId: widget.chatId, chatTitle: widget.chatParticipantName)));
+
+    // For this conceptual step, show a modal bottom sheet with toggles
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder( // Use StatefulBuilder to update toggles within the sheet
+          builder: (BuildContext context, StateSetter setSheetState) {
+            return Container(
+              padding: EdgeInsets.all(16),
+              child: Wrap(
+                children: <Widget>[
+                  Text("AI Settings for this Chat", style: Theme.of(context).textTheme.titleLarge),
+                  SwitchListTile(
+                    title: Text('Enable Copilot'),
+                    subtitle: Text('Get AI reply suggestions.'),
+                    value: _copilotEnabled,
+                    onChanged: (bool value) async {
+                      setSheetState(() { _copilotEnabled = value; });
+                      setState(() { _copilotEnabled = value; }); // Update screen state too
+                      await _chatSettingsService.updateAiSettings(widget.chatId, _currentUserId, copilotEnabled: value);
+                      if (!value) setState(() => _copilotSuggestions = [] ); // Clear suggestions if disabled
+                    },
+                  ),
+                  SwitchListTile(
+                    title: Text('Enable Autopilot'),
+                    subtitle: Text('Allow AI to reply automatically (use with caution).'),
+                    value: _autopilotEnabled,
+                    onChanged: (bool value) async {
+                       setSheetState(() { _autopilotEnabled = value; });
+                       setState(() { _autopilotEnabled = value; }); // Update screen state too
+                       await _chatSettingsService.updateAiSettings(widget.chatId, _currentUserId, autopilotEnabled: value);
+                    },
+                  ),
+                ],
+              ),
+            );
+          }
+        );
+      },
+    );
+  }
+
+  // Helper to group messages by date for adding dividers
+  List<dynamic> _getMessagesWithDateDividers() {
+    List<dynamic> items = [];
+    DateTime? lastDate;
+    for (var i = _messages.length - 1; i >= 0; i--) { // Iterate from oldest to newest for divider logic
+      final message = _messages[i];
+      final messageDate = DateTime(message.timestamp.year, message.timestamp.month, message.timestamp.day);
+      if (lastDate == null || !isSameDay(lastDate, messageDate)) {
+        items.add(messageDate); // Add date as a divider item
+        lastDate = messageDate;
+      }
+      items.add(message); // Add message item
+    }
+    return items.reversed.toList(); // Reverse again to have newest at bottom for ListView (if ListView not reversed)
+                                   // Or keep as is if ListView is reversed. Current ListView is reversed.
+  }
+
+  bool isSameDay(DateTime date1, DateTime date2) {
+    return date1.year == date2.year && date1.month == date2.month && date1.day == date2.day;
+  }
 
   @override
   void dispose() {
     _messageController.removeListener(_onInputChanged);
     _messageController.dispose();
-    _chatService.disposeStreamController();
+    // _chatService.disposeStreamController(); // If stream is managed by ChatService
     super.dispose();
+  }
+
+  Widget _buildDateDivider(DateTime date) {
+    return Center(
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+        margin: EdgeInsets.symmetric(vertical: 8.0),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade300,
+          borderRadius: BorderRadius.circular(12.0),
+        ),
+        child: Text(
+          DateFormat.yMMMd().format(date), // e.g., Oct 28, 2023
+          style: TextStyle(fontSize: 12.0, color: Colors.black54, fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final processedMessageList = _getMessagesWithDateDividers();
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.chatParticipantName),
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: widget.chatParticipantAvatarColor ?? Theme.of(context).colorScheme.primaryContainer,
+              backgroundImage: widget.chatParticipantAvatarUrl != null ? NetworkImage(widget.chatParticipantAvatarUrl!) : null,
+              child: (widget.chatParticipantAvatarUrl == null && widget.chatParticipantName.isNotEmpty)
+                  ? Text(widget.chatParticipantName[0].toUpperCase(), style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer))
+                  : null,
+            ),
+            SizedBox(width: 10),
+            Text(widget.chatParticipantName),
+          ],
+        ),
+        actions: [
+          // Placeholder for Call buttons if needed
+          // IconButton(icon: Icon(Icons.videocam_outlined), onPressed: () {}),
+          // IconButton(icon: Icon(Icons.call_outlined), onPressed: () {}),
+          IconButton(
+            icon: Icon(Icons.more_vert),
+            onPressed: _showChatSettings,
+            tooltip: "Chat Settings",
+          ),
+        ],
       ),
       body: Column(
         children: <Widget>[
           Expanded(
             child: _isLoadingMessages
                 ? Center(child: CircularProgressIndicator())
-                : _messages.isEmpty
-                    ? Center(child: Text('No messages yet. Say hi!'))
-                    : ListView.builder( /* ... existing ListView.builder ... */
+                : processedMessageList.isEmpty
+                    ? Center(child: Text('No messages yet. Start the conversation!'))
+                    : ListView.builder(
                         reverse: true,
                         padding: EdgeInsets.all(8.0),
-                        itemCount: _messages.length,
+                        itemCount: processedMessageList.length,
                         itemBuilder: (context, index) {
-                          final message = _messages[index];
-                          return MessageBubble(
-                            message: message,
-                            isCurrentUser: message.senderId == _currentUserId,
-                            // Potentially pass sender name for group chats
-                          );
+                          final item = processedMessageList[index];
+                          if (item is DateTime) { // It's a date divider
+                            return _buildDateDivider(item);
+                          } else if (item is ChatMessageModel) { // It's a message
+                            return MessageBubble(
+                              message: item,
+                              isCurrentUser: item.senderId == _currentUserId,
+                              // For group chats, senderDisplayName would be needed here
+                            );
+                          }
+                          return SizedBox.shrink(); // Should not happen
                         },
                       ),
           ),
-          // Copilot Suggestion Bar Display
-          if (_currentCopilotSuggestion != null)
-            CopilotSuggestionBar(
-              suggestionText: _currentCopilotSuggestion!,
-              onTap: _useCopilotSuggestion,
-              onDismiss: _dismissCopilotSuggestion,
+          // Copilot Suggestion Area
+          if (_isGeneratingCopilotSuggestions)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [CircularProgressIndicator(strokeWidth: 2), SizedBox(width:8), Text("AI thinking...")]),
             ),
-
-          Padding( // Message Input Area
-            padding: EdgeInsets.only(left: 8.0, right: 8.0, bottom: MediaQuery.of(context).padding.bottom + 8.0, top: 4.0),
-            child: Row( /* ... existing input Row ... */
-              children: <Widget>[
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    decoration: InputDecoration(
-                      hintText: 'Type a message...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(25.0),
-                        borderSide: BorderSide.none,
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey[200],
-                      contentPadding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
-                    ),
-                    minLines: 1,
-                    maxLines: 5,
-                    onSubmitted: (_) => _sendMessage(),
+          if (!_isGeneratingCopilotSuggestions && _copilotSuggestions.isNotEmpty)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(left: 16.0, top: 4.0, bottom: 4.0),
+                  child: Text(
+                    "✨ AI Copilot suggestions (visible only to you):", // "该消息由 AI(Copilot) 起草..."
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                 ),
-                SizedBox(width: 8.0),
-                IconButton(
-                  icon: Icon(Icons.send_rounded, color: Theme.of(context).primaryColor),
-                  onPressed: _sendMessage,
-                ),
+                ..._copilotSuggestions.map((suggestion) => InkWell( // Making the whole suggestion tappable
+                  onTap: () => _useCopilotSuggestion(suggestion),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+                    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(12.0),
+                      border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.5), width: 1)
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(child: Text(suggestion, style: TextStyle(color: Theme.of(context).colorScheme.onSecondaryContainer))),
+                        // Icon(Icons.send, size: 18, color: Theme.of(context).colorScheme.primary) // Optional "use" icon
+                      ],
+                    )
+                  ),
+                )).toList(),
+                 SizedBox(height: 4), // Some spacing before input bar
               ],
             ),
+
+          // ChatInputBar Integration
+          ChatInputBar(
+            controller: _messageController,
+            onSendPressed: _isSendingMessage ? () {} : _sendMessage, // Disable button while sending
+            onAttachPressed: () {
+              // TODO: Implement attachment functionality
+              print('Attach media pressed');
+            },
           ),
         ],
       ),
     );
   }
 }
+
 ```
